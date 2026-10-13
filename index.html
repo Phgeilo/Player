@@ -49,6 +49,7 @@ h1{margin:0;font-size:1.9rem}h2{font-size:1.15rem;margin:22px 0 12px}.sub{color:
 #menu button{display:block;width:100%;padding:10px 12px;border-radius:8px}#menu button:hover{background:var(--c2)}#menu .w{color:#e5484d}
 #mod{position:fixed;inset:0;z-index:10;background:#0008;display:grid;place-items:center}#mod div{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;width:min(380px,90vw);display:grid;gap:14px}#mod h3{margin:0}#mod input{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;outline:0}#mod p{display:flex;gap:8px;margin:0;justify-content:flex-end}
 #flash{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;z-index:8}#flash:empty{display:none}
+#bXf{padding:7px 12px;font-size:.8rem}#bXf[aria-pressed=true]{border-color:var(--acc);color:var(--acc)}
 @media(max-width:1000px){.cols{grid-template-columns:1fr}.acts{grid-template-columns:1fr}}
 @media(max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr) auto;grid-template-areas:"sb" "main" "bar"}
 #sb{flex-direction:row;overflow:auto;padding:8px;border-right:0;border-bottom:1px solid var(--line)}.logo,.sp,#sb .box{display:none}.nv{width:auto;white-space:nowrap;padding:9px 12px}
@@ -59,7 +60,7 @@ h1{margin:0;font-size:1.9rem}h2{font-size:1.15rem;margin:22px 0 12px}.sub{color:
 <div class="np"><div id="npc"></div><div class="nt"><b id="ttl">Nichts ausgewählt</b><span id="art" class="mu"></span></div><button class="ib0" id="bHeart" aria-label="Favorit"></button></div>
 <div class="mid"><div class="ctl"><button class="cb" id="bShuf" aria-label="Zufällige Reihenfolge" aria-pressed="false"></button><button class="cb" id="bPrev" aria-label="Ein Song zurück"></button><button class="cb pl" id="bPlay" aria-label="Abspielen"></button><button class="cb" id="bNext" aria-label="Nächster Song"></button><button class="cb" id="bRep" aria-label="Wiederholen" aria-pressed="false"><span id="rb"></span></button></div>
 <div class="tm"><span id="tCur">0:00</span><input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Position"><span id="tDur">0:00</span></div></div>
-<div class="vol"><span id="volI"></span><input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Lautstärke"></div></footer>
+<div class="vol"><button class="btn" id="bXf" aria-pressed="false" title="Sanfter Übergang zwischen den Songs">Überblenden</button><span id="volI"></span><input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Lautstärke"></div></footer>
 <div id="flash" role="status"></div>
 <input type="file" id="fileIn" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac,.opus" multiple hidden>
 <script>
@@ -79,7 +80,7 @@ const cov=(n,z)=>h('div',{class:'cv',style:`background:linear-gradient(135deg,hs
 const parse=n=>{const i=n.indexOf(' - ');return i>0?{a:n.slice(0,i).trim(),t:n.slice(i+3).trim()}:{a:'Unbekannt',t:n}};
 const FAV='__fav',AC=['#2f7cf6','#e0457b','#1fa971','#d9770a'];
 let songs=[],lists=[],dur={},view='home',sel='all',q='',queue=[],order=[],pos=-1,shuffle=false,repeat=0,curId=null,url=null,armed=null,memOnly=false,dragging=false,ft,durBusy=false;
-const audio=new Audio();
+const A1=new Audio(),A2=new Audio(),gains=new Map();let audio=A1,ctx=null,xf=false,xfading=false,volT=1;
 const ttl=$('#ttl'),art=$('#art'),seek=$('#seek'),tCur=$('#tCur'),tDur=$('#tDur'),bPlay=$('#bPlay'),bShuf=$('#bShuf'),bRep=$('#bRep'),bHeart=$('#bHeart'),fileIn=$('#fileIn');
 const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
 const applyTheme=()=>{document.documentElement.dataset.theme=ls.get('th')||'dark';document.documentElement.style.setProperty('--acc',ls.get('ac')||AC[0])};applyTheme();
@@ -120,7 +121,7 @@ ctx!=='all'?{t:'Aus dieser Playlist entfernen',f:()=>rmFrom(ctx,s.id)}:null,{t:'
 /* Wiedergabe */
 function build(sid){const n=queue.length,i=Math.max(0,queue.indexOf(sid));if(shuffle){const r=[...Array(n).keys()].filter(x=>x!==i);for(let k=r.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[r[k],r[j]]=[r[j],r[k]]}order=[i,...r];pos=0}else{order=[...Array(n).keys()];pos=i}}
 function playFrom(ids,sid){queue=ids.slice();if(!queue.length)return;build(sid||queue[0]);load()}
-function load(){const s=byId(queue[order[pos]]);if(!s)return;curId=s.id;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(s.blob);audio.src=url;audio.play().catch(()=>{});
+function load(){const s=byId(queue[order[pos]]);if(!s)return;if(xf)ensureCtx();curId=s.id;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(s.blob);audio.src=url;audio.play().catch(()=>{});
 if('mediaSession' in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:s.title,artist:s.artist});updateBar();render()}
 function next(auto){if(!queue.length)return;if(pos<order.length-1){pos++;load()}else if(repeat===1||!auto){if(shuffle)build(queue[Math.floor(Math.random()*queue.length)]);else pos=0;load()}else{audio.pause();audio.currentTime=0;updateBar()}}
 function prev(){if(!curId)return;if(audio.currentTime>3||pos<=0){audio.currentTime=0;return}pos--;load()}
@@ -132,13 +133,26 @@ const b=bRep.querySelector('b');if(b)b.remove();if(repeat===2)bRep.append(h('b',
 bShuf.append(ico('shuf'));$('#bPrev').append(ico('prev',20,1));$('#bNext').append(ico('next',20,1));$('#rb').append(ico('rep'));$('#volI').append(ico('vol',20));
 bPlay.onclick=toggle;$('#bPrev').onclick=prev;$('#bNext').onclick=()=>next(false);
 bShuf.onclick=()=>{shuffle=!shuffle;if(curId)build(curId);updateBar()};bRep.onclick=()=>{repeat=(repeat+1)%3;updateBar()};bHeart.onclick=()=>{if(curId)toggleFav(curId)};
-$('#vol').oninput=e=>audio.volume=+e.target.value;
+$('#vol').oninput=e=>{volT=+e.target.value;A1.volume=volT;A2.volume=volT};
 seek.addEventListener('pointerdown',()=>dragging=true);seek.addEventListener('pointerup',()=>dragging=false);seek.oninput=()=>{audio.currentTime=+seek.value;tCur.textContent=fmt(+seek.value)};
-audio.addEventListener('timeupdate',()=>{if(!dragging){seek.max=audio.duration||0;seek.value=audio.currentTime}tCur.textContent=fmt(audio.currentTime);tDur.textContent=fmt(audio.duration)});
-audio.addEventListener('loadedmetadata',()=>{if(curId&&isFinite(audio.duration)&&!(dur[curId]>0)){dur[curId]=audio.duration;document.querySelectorAll('[data-d="'+curId+'"]').forEach(e=>e.textContent=fd(curId))}});
-audio.addEventListener('play',()=>{updateBar();render()});audio.addEventListener('pause',()=>{updateBar();render()});
-audio.addEventListener('ended',()=>{if(repeat===2){audio.currentTime=0;audio.play()}else next(true)});
+const wire=(ev,f)=>{A1.addEventListener(ev,f);A2.addEventListener(ev,f)};
+wire('timeupdate',e=>{if(e.target!==audio)return;if(!dragging){seek.max=audio.duration||0;seek.value=audio.currentTime}tCur.textContent=fmt(audio.currentTime);tDur.textContent=fmt(audio.duration);checkXf()});
+wire('loadedmetadata',e=>{if(e.target!==audio)return;if(curId&&isFinite(audio.duration)&&!(dur[curId]>0)){dur[curId]=audio.duration;document.querySelectorAll('[data-d="'+curId+'"]').forEach(e=>e.textContent=fd(curId))}});
+wire('play',e=>{if(e.target===audio){updateBar();render()}});wire('pause',e=>{if(e.target===audio){updateBar();render()}});
+wire('ended',e=>{if(e.target!==audio)return;if(repeat===2){audio.currentTime=0;audio.play()}else next(true)});
 if('mediaSession' in navigator)[['play',()=>audio.play()],['pause',()=>audio.pause()],['previoustrack',prev],['nexttrack',()=>next(false)]].forEach(([a,f])=>{try{navigator.mediaSession.setActionHandler(a,f)}catch(e){}});
+/* Überblendung: der alte Song läuft auf dem zweiten Player aus, der neue blendet auf dem anderen ein */
+const XF=5,SIL='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+function ensureCtx(){if(!ctx){const C=window.AudioContext||window.webkitAudioContext;if(!C)return;try{const c=new C();[A1,A2].forEach(a=>{const g=c.createGain();c.createMediaElementSource(a).connect(g);g.connect(c.destination);gains.set(a,g)});ctx=c}catch(e){gains.clear()}}if(ctx&&ctx.state==='suspended')ctx.resume()}
+function unlock(){const o=audio===A1?A2:A1;if(!o.paused||o.dataset.u)return;o.dataset.u='1';o.src=SIL;o.play().then(()=>o.pause()).catch(()=>{})}
+function fade(a,from,to,ms){const g=gains.get(a);if(g&&ctx){const t=ctx.currentTime;g.gain.cancelScheduledValues(t);g.gain.setValueAtTime(from,t);g.gain.linearRampToValueAtTime(to,t+ms/1000)}else{const t0=performance.now();a.volume=from*volT;const iv=setInterval(()=>{const k=Math.min(1,(performance.now()-t0)/ms);a.volume=(from+(to-from)*k)*volT;if(k>=1)clearInterval(iv)},60)}}
+function checkXf(){if(!xf||xfading||!curId||audio.paused||repeat===2)return;const d=audio.duration;if(!isFinite(d)||d<XF*3||d-audio.currentTime>XF)return;if(!(pos<order.length-1||repeat===1))return;xfading=true;crossTo()}
+function crossTo(){ensureCtx();const old=audio,oldUrl=url;fade(old,1,0,XF*1000);audio=old===A1?A2:A1;url=null;
+if(pos<order.length-1)pos++;else if(shuffle)build(queue[Math.floor(Math.random()*queue.length)]);else pos=0;
+load();fade(audio,0,1,XF*1000);
+setTimeout(()=>{old.pause();old.removeAttribute('src');if(oldUrl)URL.revokeObjectURL(oldUrl);xfading=false},XF*1000+300)}
+function setXf(v){xf=v;ls.set('xf',v?'1':'0');if(v){ensureCtx();unlock()}$('#bXf').setAttribute('aria-pressed',v);flash(v?'Überblendung an':'Überblendung aus');if(view==='set')render()}
+$('#bXf').onclick=()=>setXf(!xf);addEventListener('click',()=>{if(xf)unlock()},{once:true});
 async function loadDurs(){if(durBusy)return;durBusy=true;for(const s of songs){if(dur[s.id]!=null)continue;await new Promise(res=>{const a=new Audio(),u=URL.createObjectURL(s.blob),end=v=>{clearTimeout(t);dur[s.id]=isFinite(v)?v:0;URL.revokeObjectURL(u);res()},t=setTimeout(()=>end(0),3000);a.preload='metadata';a.onloadedmetadata=()=>end(a.duration);a.onerror=()=>end(0);a.src=u});
 document.querySelectorAll('[data-d="'+s.id+'"]').forEach(e=>e.textContent=fd(s.id))}durBusy=false;if(!$('#menu')&&!$('#mod'))render()}
 async function updStore(){const el=$('#stx'),bar=$('#stb');if(!el)return;try{const e=await navigator.storage.estimate(),g=x=>x>=1e9?(x/1e9).toFixed(1)+' GB':Math.round(x/1e6)+' MB';el.textContent=g(e.usage)+' von '+g(e.quota);bar.style.width=Math.max(2,Math.min(100,e.usage/e.quota*100))+'%'}catch(x){el.textContent=songs.length+' Songs lokal gespeichert'}}
@@ -174,6 +188,7 @@ else if(view==='music')body=h('div',{},h('h1',{},'Meine Musik'),h('p',{class:'su
 else if(view==='lists')body=h('div',{class:'cols'},h('div',{},h('h1',{},'Playlists'),h('p',{class:'sub'},'Wähle eine Playlist aus oder erstelle eine neue.'),pcards()),panel());
 else body=h('div',{},h('h1',{style:'margin-bottom:18px'},'Einstellungen'),h('div',{class:'set'},
 h('div',{class:'box'},h('b',{},'Darstellung'),h('div',{class:'r2',style:'margin:12px 0 0'},...['dark','light'].map(t=>h('button',{class:'btn','aria-pressed':(ls.get('th')||'dark')===t,style:(ls.get('th')||'dark')===t?'border-color:var(--acc)':'',onclick:()=>{ls.set('th',t);applyTheme();render()}},t==='dark'?'Dunkel':'Hell'))),h('div',{class:'sw'},...AC.map(c=>h('button',{style:'background:'+c,'aria-label':'Akzentfarbe','aria-pressed':(ls.get('ac')||AC[0])===c,onclick:()=>{ls.set('ac',c);applyTheme();render()}})))),
+h('div',{class:'box'},h('b',{},'Wiedergabe'),'Sanfter Übergang zwischen den Songs ('+XF+' Sekunden).',h('div',{style:'margin-top:12px'},h('button',{class:'btn','aria-pressed':xf,style:xf?'border-color:var(--acc)':'',onclick:()=>setXf(!xf)},xf?'Überblendung: An':'Überblendung: Aus'))),
 h('div',{class:'box'},h('b',{},'Speicher'),songs.length+' Songs und '+ulists().length+' Playlists liegen nur in diesem Browser.',memOnly?h('p',{style:'color:#e5484d'},'Browser-Speicher nicht verfügbar: Songs bleiben nur bis zum Schließen.'):null,h('div',{style:'margin-top:12px'},h('button',{class:'btn w',onclick:e=>{if(armed==='all'){armed=null;clearAll()}else{armed='all';e.currentTarget.textContent='Wirklich alles löschen? Nochmal tippen';setTimeout(()=>{armed=null;render()},3500)}}},'Alle Daten löschen')))));
 m.replaceChildren(search(),body);m.scrollTop=st;if(keepFocus){const i=m.querySelector('.srch input');if(i){i.focus();i.setSelectionRange(q.length,q.length)}}}
 function render(kf){renderSide();renderMain(kf)}
@@ -182,5 +197,5 @@ addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e
 addEventListener('online',renderSide);addEventListener('offline',renderSide);
 (async()=>{const rs=(await db('songs','readonly',s=>s.getAll()))||[];songs=rs.map(r=>{const p=parse(r.name);return{id:r.id,name:r.name,title:p.t,artist:p.a,added:r.added,blob:r.blob||new Blob([r.data],{type:r.type})}}).sort((a,b)=>a.added-b.added);
 lists=(await db('playlists','readonly',s=>s.getAll()))||[];if(!(await dbp))memOnly=true;if(!lget(FAV)){const f={id:FAV,name:'Favoriten',ids:[]};lists.push(f);saveList(f)}
-if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});updateBar();render();loadDurs()})();
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});xf=ls.get('xf')==='1';$('#bXf').setAttribute('aria-pressed',xf);updateBar();render();loadDurs()})();
 </script></body></html>
